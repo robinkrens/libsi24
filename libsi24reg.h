@@ -74,7 +74,7 @@
 #define AW_4 0x2
 #define AW_5 0x3
 
-#define ARD(x) ((x << 3) & 0xF0)
+#define ARD(x) (x << 4)
 #define ARC(x) (x & 0xF)
 
 #define RF_CH 0x0

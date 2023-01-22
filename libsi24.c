@@ -88,7 +88,7 @@ static int _config(si24_t * si)
 	if (params->enable_ack) {
 		uint8_t dyn = (1 << DPL_P0);
 		ret += _reg_write(si, SI24_REG_DYNPD, &dyn, 1);
-		feature_reg |= (1 << EN_ACK_PAY);
+		feature_reg |= (1 << EN_DPL);
 		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
 		setup_retr_reg = ARD(params->timeout) | ARC(params->retries);
 		ret += _reg_write(si, SI24_REG_SETUP_RETR, &setup_retr_reg, 1);
@@ -179,7 +179,7 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 		if (si->opts->enable_ack) {
 			_reg_write(si, SI24_W_TX_PAYLOAD, buf + idx, sz);
 			si->ctl->chip_enable(1);
-			while ((!(flags & (1 << TX_DS)) || !(flags & (1 << MAX_RT))) && timeout < 1000) {
+			while ((!(flags & (1 << TX_DS)) && !(flags & (1 << MAX_RT))) && timeout < 1000) {
 				_reg_read(si, SI24_REG_STATUS, &flags, 1);
 				timeout++;
 			}
@@ -291,16 +291,16 @@ int main(void)
 
 	const si24_opts_t opts = {
 		.mode = SEND_MODE,
-		.enable_ack = 0,
+		.enable_ack = 1,
 		.non_blocking = 0,
 		.enable_crc = 1,
-		.enable_dynpd = 0,
+		.enable_dynpd = 1,
 		.crc = TWO_BYTE,
 		.ioctl = &ctl,
 		.speed = MBPS2,
 		.txpwr = PLUS4DB,
 		.payload = 5,
-		.timeout = 5,
+		.timeout = 1,
 		.retries = 5,
 		.mac_addr = 0xAAAAAAAAAA
 	};
