@@ -8,7 +8,7 @@ set(PROJECT_HOMEPAGE_URL https://github.com/robinkrens/libsi24)
 
 add_compile_options(-Wall -Wextra -pedantic)
 
-add_library(libsi24 libsi24.c)
+add_executable(libsi24 libsi24.c)
 
 target_include_directories(libsi24
     PUBLIC

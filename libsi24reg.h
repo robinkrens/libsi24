@@ -105,19 +105,9 @@
 #define EN_DYN_ACK 0x0
 #define EN_ACK_PAY 0x1
 #define EN_DPL 0x2
-
-typedef struct {
-	union {
-		unsigned char byte;
-		struct {
-			unsigned _RESERVED:1;
-			unsigned RX_DR:1;
-			unsigned TX_DS:1;
-			unsigned MAX_RT:1;
-			unsigned RX_P_NO:3;
-			unsigned TX_FULL:1;
-		} bits;
-	};
-} si24_status_reg_t;
-
-
+			
+#define TX_FULL 0x0
+#define RX_P_NO 0x1
+#define MAX_RT 0x4
+#define TX_DS 0x5
+#define RX_DR 0x6

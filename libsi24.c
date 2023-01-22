@@ -15,11 +15,12 @@
 #include "libsi24.h"
 #include "libsi24reg.h"
 
+#define DEBUG 1
+
 struct si24_t {
 	const si24_opts_t *opts;
 	const si24_ioctl_t *ctl;
 	si24_event_handler_t eh;
-	si24_status_reg_t sr;
 };
 
 static uint8_t _reg_read(si24_t *si, uint8_t reg,
@@ -29,6 +30,7 @@ static uint8_t _reg_read(si24_t *si, uint8_t reg,
 	
 	memset(buf, 0, sz+1); 
 	buf[0] = reg | SI24_R_REGISTER;
+
 	
 	if (si->ctl->write_and_read(buf, sz+1) == -1) {
 		si24_event_t ev;
@@ -49,6 +51,14 @@ static uint8_t _reg_write(si24_t *si, uint8_t reg,
 	
 	buf[0] = reg | SI24_W_REGISTER;
 	memcpy((buf+1), data, sz);
+	
+	if(DEBUG) {
+		printf("REG 0x%x:\t", reg);
+		for (int i = 1; i <= sz; ++i) {
+			fprintf(stdout, "0x%x(%c)", buf[i], buf[i]);
+		}
+		fprintf(stdout, "\n");
+	}
 
 	if (si->ctl->write_and_read(buf, sz+1) == -1) {
 		si24_event_t ev;
@@ -64,7 +74,7 @@ static int _config(si24_t * si)
 {
 	int ret = 0;
 	uint8_t config_reg = (1 << PWR_UP);
-	uint8_t feature_reg = 0x2; /* default value */
+	uint8_t feature_reg = 0x0; /* default value */
 	uint8_t rf_setup_reg = 0xE; /* default value */
 	uint8_t setup_retr_reg = 0x3; /* default value */
 	const uint8_t rf_ch_reg = 0x40; /* default value */
@@ -78,6 +88,11 @@ static int _config(si24_t * si)
 	if (params->enable_ack) {
 		uint8_t dyn = (1 << DPL_P0);
 		ret += _reg_write(si, SI24_REG_DYNPD, &dyn, 1);
+		feature_reg |= (1 << EN_ACK_PAY);
+		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
+		setup_retr_reg = ARD(params->timeout) | ARC(params->retries);
+		ret += _reg_write(si, SI24_REG_SETUP_RETR, &setup_retr_reg, 1);
+	} else {
 		feature_reg |= (1 << EN_DYN_ACK);
 		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
 	}
@@ -93,6 +108,9 @@ static int _config(si24_t * si)
 		aw = AW_3;
 		ret += _reg_write(si, SI24_REG_SETUP_AW, &aw, 1); 
 	}
+
+	/* quick hack */
+	aw += 2;
 
 	if (params->mode == SEND_MODE && params->enable_ack) {
 		ret += _reg_write(si, SI24_REG_RX_ADDR_P0, (uint8_t *) &params->mac_addr, aw);
@@ -112,8 +130,6 @@ static int _config(si24_t * si)
 	rf_setup_reg |= (params->txpwr << RF_PWR);
 	ret += _reg_write(si, SI24_REG_RF_SETUP, &rf_setup_reg, 1);
 
-	setup_retr_reg = ARD(params->timeout) | ARC(params->retries);
-	ret += _reg_write(si, SI24_REG_SETUP_RETR, &setup_retr_reg, 1);
 
 	ret += _reg_write(si, SI24_REG_RF_CH, &rf_ch_reg, 1);
 	ret += _reg_write(si, SI24_REG_CONFIG, &config_reg, 1);
@@ -145,14 +161,14 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 	si24_event_t ev;
 	uint16_t timeout = 0;
 	int sz;
-	si24_status_reg_t flags;
-
+	uint8_t flags;
+	
 	if (si->opts->mode == RECV_MODE)
 		return -1;
 
-	_reg_read(si, 0x7, (uint8_t *) &flags, 1);
+	_reg_read(si, SI24_REG_STATUS, (uint8_t *) &flags, 1);
 
-	if (flags.bits.TX_FULL) {
+	if (flags & (1 << TX_FULL)) {
 		ev.type = EV_TX_FULL;
 		si->eh(si, &ev);
 		return -1;
@@ -161,12 +177,13 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 	for (size_t idx = 0; idx < size; idx += si->opts->payload) {
 		sz = (size - idx) < si->opts->payload ? (size - idx) : si->opts->payload;  
 		if (si->opts->enable_ack) {
-			_reg_write(si, SI24_W_TX_PAYLOAD, buf, sz);
-			while ((!flags.bits.TX_DS || !flags.bits.MAX_RT) && timeout < 1000) {
-				_reg_read(si, SI24_REG_STATUS, (uint8_t []){0x0}, 1);
+			_reg_write(si, SI24_W_TX_PAYLOAD, buf + idx, sz);
+			si->ctl->chip_enable(1);
+			while ((!(flags & (1 << TX_DS)) || !(flags & (1 << MAX_RT))) && timeout < 1000) {
+				_reg_read(si, SI24_REG_STATUS, &flags, 1);
 				timeout++;
 			}
-			if (flags.bits.MAX_RT) {
+			if (flags & (1 << MAX_RT)) {
 				ev.type = EV_ERR_MAX_RETRIES;
 				si->eh(si, &ev);
 				si24_reset(si);
@@ -174,10 +191,10 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 			}
 
 		} else {
-			_reg_write(si, SI24_W_TX_PAYLOAD_NO_ACK, buf, sz);
+			_reg_write(si, SI24_W_TX_PAYLOAD_NO_ACK, buf + idx, sz);
 			si->ctl->chip_enable(1);
-			while (!flags.bits.TX_DS && timeout < 1000) {
-				_reg_read(si, SI24_REG_STATUS, (uint8_t []){0x0}, 1);
+			while (!(flags & (1 << TX_DS)) && timeout < 1000) {
+				_reg_read(si, SI24_REG_STATUS, &flags, 1);
 				timeout++;
 			}
 		}
@@ -188,9 +205,12 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 			si24_reset(si);
 			return -1;
 		}
+
 		timeout = 0;
 	}
-	
+
+	ev.type = EV_TX_COMPLETE;
+	si->eh(si, &ev);
 	si->ctl->chip_enable(0);
 
 	return 0;
@@ -203,17 +223,28 @@ size_t si24_recv(si24_t* si, unsigned char * buf, size_t size)
 	if (si->opts->mode == SEND_MODE)
 		return -1;
 	
-	si24_status_reg_t flags;
-	_reg_read(si, 0x7, (uint8_t *) &flags, 1);
+	uint8_t flags;
+	_reg_read(si, 0x7, &flags, 1);
 	
-	if (!flags.bits.RX_DR)
-		return -1;
-
 	return 0;
 }
 
 void si24_reset(si24_t* si)
 {
+	if (si->opts->mode == RECV_MODE) {
+		_reg_write(si, SI24_FLUSH_RX, 0, 0);
+	}
+	else if (si->opts->mode == SEND_MODE) {
+		_reg_write(si, SI24_FLUSH_TX, 0, 0);
+	}
+
+	uint8_t status_reg = {0};
+	status_reg |= (1 << RX_DR);
+	status_reg |= (1 << TX_DS);
+	status_reg |= (1 << MAX_RT);
+
+	_reg_write(si, SI24_REG_STATUS, (uint8_t *) &status_reg, 1);
+
 	si->ctl->chip_enable(0);
 }
 
@@ -222,6 +253,59 @@ void si24_free(si24_t * si)
 	free(si);
 }
 
+/* hardware linkage */
+int spi_w_r(unsigned char *data, size_t sz)
+{
+	if (sz >= 2)
+		data[1] = (1 << TX_DS);
+	return sz;
+}
+
+void ce(unsigned val)
+{
+}
+
+void eh(si24_t *si, si24_event_t * e)
+{
+	switch(e->type) {
+		case EV_TX_COMPLETE:
+			printf("SENT SUCCESFUL\n");
+			break;
+		case EV_ERR_TIMEOUT:
+			printf("TIMEOUT\n");
+			break;
+		default:
+			printf("EVENT: %x\n", e->type);
+			break;
+	}
+}
+
 int main(void)
 {
+	const unsigned char buf[] = "THIS IS A WIRELESS TEST MESSAGE!";
+
+	si24_ioctl_t ctl = {
+		.write_and_read = spi_w_r,
+		.chip_enable = ce,
+	};
+
+	const si24_opts_t opts = {
+		.mode = SEND_MODE,
+		.enable_ack = 0,
+		.non_blocking = 0,
+		.enable_crc = 1,
+		.enable_dynpd = 0,
+		.crc = TWO_BYTE,
+		.ioctl = &ctl,
+		.speed = MBPS2,
+		.txpwr = PLUS4DB,
+		.payload = 5,
+		.timeout = 5,
+		.retries = 5,
+		.mac_addr = 0xAAAAAAAAAA
+	};
+
+	struct si24_t * si = si24_init(&opts, eh);
+	si24_send(si, buf, sizeof(buf));
+	
 }

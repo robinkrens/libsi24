@@ -30,8 +30,8 @@ enum si24_mode_t {
 typedef enum si24_mode_t si24_mode_t;
 
 enum si24_crc_t {
-    ONE_BYTE = 1,
-    TWO_BYTE = 2
+    ONE_BYTE = 0,
+    TWO_BYTE = 1
 };
 
 typedef enum si24_crc_t si24_crc_t;
@@ -86,7 +86,7 @@ typedef union si24_event_t si24_event_t;
 /* low level IO control */
 typedef struct {
     int (*write_and_read)(unsigned char *data, size_t sz);
-    int (*chip_enable)(unsigned val);
+    void (*chip_enable)(unsigned val);
 } si24_ioctl_t;
 
 typedef struct {
@@ -102,7 +102,7 @@ typedef struct {
     unsigned payload;
     unsigned timeout; /* 1: 250 us, 15: 4000 us */
     unsigned retries; /* 1 to 15 */
-    unsigned mac_addr;
+    unsigned long mac_addr;
 } si24_opts_t;
 
 /* private data structure */
