@@ -6,7 +6,7 @@ project(libsi24
 set(PROJECT_DESCRIPTION "si24r1 library")
 set(PROJECT_HOMEPAGE_URL https://github.com/robinkrens/libsi24)
 
-add_compile_options(-Wall -Wextra -pedantic -Werror)
+add_compile_options(-Wall -Wextra -pedantic)
 
 add_library(libsi24 libsi24.c)
 
