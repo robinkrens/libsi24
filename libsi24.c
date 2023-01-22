@@ -90,11 +90,15 @@ static int _config(si24_t * si)
 		ret += _reg_write(si, SI24_REG_DYNPD, &dyn, 1);
 		feature_reg |= (1 << EN_DPL);
 		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
-		setup_retr_reg = ARD(params->timeout) | ARC(params->retries);
-		ret += _reg_write(si, SI24_REG_SETUP_RETR, &setup_retr_reg, 1);
+		if (params->mode == SEND_MODE) {
+			setup_retr_reg = ARD(params->timeout) | ARC(params->retries);
+			ret += _reg_write(si, SI24_REG_SETUP_RETR, &setup_retr_reg, 1);
+		}
 	} else {
-		feature_reg |= (1 << EN_DYN_ACK);
-		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
+		if (params->mode == SEND_MODE) {
+			feature_reg |= (1 << EN_DYN_ACK);
+			ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
+		}
 	}
 
 	uint8_t aw;
@@ -290,7 +294,7 @@ int main(void)
 	};
 
 	const si24_opts_t opts = {
-		.mode = SEND_MODE,
+		.mode = RECV_MODE,
 		.enable_ack = 1,
 		.non_blocking = 0,
 		.enable_crc = 1,
