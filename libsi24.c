@@ -169,6 +169,7 @@ si24_t* si24_init(const si24_opts_t *opts, si24_event_handler_t eh)
 size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 {
 	si24_event_t ev;
+	size_t bytes_sent = 0;
 	uint16_t timeout = 0;
 	int sz;
 	uint8_t flags;
@@ -215,7 +216,7 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 			si24_reset(si);
 			return -1;
 		}
-
+		bytes_sent += sz;
 		timeout = 0;
 	}
 
@@ -223,7 +224,7 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 	si->eh(si, &ev);
 	si->ctl->chip_enable(0);
 
-	return 0;
+	return bytes_sent;
 }
 
 size_t si24_recv(si24_t* si, unsigned char * buf, size_t size) 
@@ -306,10 +307,13 @@ int spi_w_r(unsigned char *data, size_t sz)
 
 void ce(unsigned val)
 {
+	(void) val;
 }
 
 void eh(si24_t *si, si24_event_t * e)
 {
+	(void) si;
+
 	switch(e->type) {
 		case EV_TX_COMPLETE:
 			printf("SENT SUCCESFUL\n");
@@ -331,7 +335,7 @@ void eh(si24_t *si, si24_event_t * e)
 
 int main(void)
 {
-	const unsigned char buf[] = "THIS IS A WIRELESS TEST MESSAGE!";
+	/* const unsigned char buf[] = "THIS IS A WIRELESS TEST MESSAGE!";*/
 	unsigned char recv_buf[29];
 
 	si24_ioctl_t ctl = {
