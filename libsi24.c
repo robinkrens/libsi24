@@ -138,6 +138,12 @@ static int _config(si24_t * si)
 	ret += _reg_write(si, SI24_REG_RF_CH, &rf_ch_reg, 1);
 	ret += _reg_write(si, SI24_REG_CONFIG, &config_reg, 1);
 
+	if (params->mode == RECV_MODE) {
+		/* start accepting data immediately,
+		 * for send mode it is onyl activated upon sending */
+		params->ioctl->chip_enable(1);
+	}
+
 	return ret;
 }
 
@@ -222,15 +228,48 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 
 size_t si24_recv(si24_t* si, unsigned char * buf, size_t size) 
 {
-	(void) buf;
-	(void) size;
+	si24_event_t ev;
+	size_t bytes_read = 0;
+	uint8_t p_size = si->opts->payload;
+	uint8_t tmpbuf[p_size];
+	uint8_t flags;
+	uint8_t fifo_flags;
+	
 	if (si->opts->mode == SEND_MODE)
 		return -1;
+
+	_reg_read(si, SI24_REG_STATUS, &flags, 1);
+
+	if (!(flags & (1 << RX_DR))) {
+		ev.type = EV_RX_EMPTY;
+		si->eh(si, &ev);
+		return -1;
+	}
+
+	/* do not accept any new incoming data */
+	si->opts->ioctl->chip_enable(0);
+
+	_reg_read(si, SI24_REG_FIFO_SATUS, &fifo_flags, 1);
+	while(!(fifo_flags & (1 << RX_EMPTY)) &&
+			bytes_read < size) {
+		
+		int m_size = (size - bytes_read) > p_size ? p_size : (size - bytes_read);
+		_reg_read(si, SI24_R_RX_PAYLOAD, tmpbuf, m_size);
+		memcpy(buf + bytes_read, tmpbuf, m_size);
+		bytes_read += m_size;
+		
+		ev.type = EV_RX_COMPLETE;
+		si->eh(si, &ev);
+
+		_reg_read(si, SI24_REG_FIFO_SATUS, &fifo_flags, 1);
+	}
+
+	flags |= (1 << RX_DR);
+	_reg_write(si, SI24_REG_STATUS, &flags, 1);
+
+	si->opts->ioctl->chip_enable(1);
 	
-	uint8_t flags;
-	_reg_read(si, 0x7, &flags, 1);
-	
-	return 0;
+	return bytes_read;
 }
 
 void si24_reset(si24_t* si)
@@ -261,7 +300,7 @@ void si24_free(si24_t * si)
 int spi_w_r(unsigned char *data, size_t sz)
 {
 	if (sz >= 2)
-		data[1] = (1 << TX_DS);
+		data[1] = (1 << RX_DR);
 	return sz;
 }
 
@@ -275,6 +314,12 @@ void eh(si24_t *si, si24_event_t * e)
 		case EV_TX_COMPLETE:
 			printf("SENT SUCCESFUL\n");
 			break;
+		case EV_RX_COMPLETE:
+			printf("RECV COMPLETE\n");
+			break;
+		case EV_RX_EMPTY:
+			printf("NO NEW DATA\n");
+			break;
 		case EV_ERR_TIMEOUT:
 			printf("TIMEOUT\n");
 			break;
@@ -287,6 +332,7 @@ void eh(si24_t *si, si24_event_t * e)
 int main(void)
 {
 	const unsigned char buf[] = "THIS IS A WIRELESS TEST MESSAGE!";
+	unsigned char recv_buf[29];
 
 	si24_ioctl_t ctl = {
 		.write_and_read = spi_w_r,
@@ -310,6 +356,7 @@ int main(void)
 	};
 
 	struct si24_t * si = si24_init(&opts, eh);
-	si24_send(si, buf, sizeof(buf));
+	/* si24_send(si, buf, sizeof(buf)); */
+	printf("READ: %ld\n", si24_recv(si, recv_buf, sizeof(recv_buf)));
 	
 }

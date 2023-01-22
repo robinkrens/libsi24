@@ -61,6 +61,7 @@ enum si24_event_type_t {
     EV_RX_COMPLETE = 0,
     EV_TX_COMPLETE,
     EV_TX_FULL,
+    EV_RX_EMPTY,
     EV_ERR_TIMEOUT,
     EV_ERR_BUS,
     EV_ERR_MAX_RETRIES,
