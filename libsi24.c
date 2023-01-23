@@ -237,7 +237,7 @@ size_t si24_recv(si24_t* si, unsigned char * buf, size_t size)
 	if (!(flags & (1 << RX_DR))) {
 		ev.type = EV_RX_EMPTY;
 		si->eh(si, &ev);
-		return -1;
+		return bytes_read;
 	}
 
 	/* do not accept any new incoming data */
@@ -249,17 +249,21 @@ size_t si24_recv(si24_t* si, unsigned char * buf, size_t size)
 		
 		int m_size = (size - bytes_read) > p_size ? p_size : (size - bytes_read);
 		_reg_read(si, SI24_R_RX_PAYLOAD, tmpbuf, m_size);
+
 		memcpy(buf + bytes_read, tmpbuf, m_size);
 		bytes_read += m_size;
-		
-		ev.type = EV_RX_COMPLETE;
-		si->eh(si, &ev);
 
 		_reg_read(si, SI24_REG_FIFO_SATUS, &fifo_flags, 1);
 	}
 
-	flags |= (1 << RX_DR);
-	_reg_write(si, SI24_REG_STATUS, &flags, 1);
+	/* only clear data ready flag when FIFO is empty */
+	if (fifo_flags & (1 << RX_EMPTY)) {
+		flags |= (1 << RX_DR);
+		_reg_write(si, SI24_REG_STATUS, &flags, 1);
+	}
+	
+	ev.type = EV_RX_COMPLETE;
+	si->eh(si, &ev);
 
 	si->opts->ioctl->chip_enable(1);
 	
