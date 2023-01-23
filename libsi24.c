@@ -15,7 +15,8 @@
 #include "libsi24.h"
 #include "libsi24reg.h"
 
-#define DEBUG 1
+#define DEBUG 0
+#define TIMEOUT 0xFFFF
 
 struct si24_t {
 	const si24_opts_t *opts;
@@ -101,33 +102,21 @@ static int _config(si24_t * si)
 		}
 	}
 
-	uint8_t aw;
-	if (params->mac_addr & 0xF0000) {
-		aw = AW_5;
-		ret += _reg_write(si, SI24_REG_SETUP_AW, &aw, 1); 
-	} else if (params->mac_addr & 0xF000) {
-		aw = AW_4;
-		ret += _reg_write(si, SI24_REG_SETUP_AW, &aw, 1); 
-	} else {
-		aw = AW_3;
-		ret += _reg_write(si, SI24_REG_SETUP_AW, &aw, 1); 
-	}
-
-	/* quick hack */
-	aw += 2;
+	uint8_t aw = AW_5;
+	ret += _reg_write(si, SI24_REG_SETUP_AW, &aw, 1); 
 
 	if (params->mode == SEND_MODE && params->enable_ack) {
-		ret += _reg_write(si, SI24_REG_RX_ADDR_P0, (uint8_t *) &params->mac_addr, aw);
+		ret += _reg_write(si, SI24_REG_RX_ADDR_P0, params->mac_addr, sizeof(params->mac_addr));
 	}
 	
 	if (params->mode == RECV_MODE) {
 		config_reg |= (1 << PRIM_RX);
 		uint8_t ch = 0x1;
 		ret += _reg_write(si, SI24_REG_EN_RXADDR, &ch, 1); 
-		ret += _reg_write(si, SI24_REG_RX_ADDR_P0, (uint8_t *) &params->mac_addr, aw);
+		ret += _reg_write(si, SI24_REG_RX_ADDR_P0, params->mac_addr, sizeof(params->mac_addr));
 		ret += _reg_write(si, SI24_REG_RX_PW_P0, (uint8_t *) &params->payload, 1);
 	} else {
-		ret += _reg_write(si, SI24_REG_TX_ADDR, (uint8_t *) &params->mac_addr, aw);
+		ret += _reg_write(si, SI24_REG_TX_ADDR, params->mac_addr, sizeof(params->mac_addr));
 	}
 
 	rf_setup_reg |= (params->speed << RF_DR_HIGH);
@@ -190,7 +179,7 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 		if (si->opts->enable_ack) {
 			_reg_write(si, SI24_W_TX_PAYLOAD, buf + idx, sz);
 			si->ctl->chip_enable(1);
-			while ((!(flags & (1 << TX_DS)) && !(flags & (1 << MAX_RT))) && timeout < 1000) {
+			while ((!(flags & (1 << TX_DS)) && !(flags & (1 << MAX_RT))) && timeout < TIMEOUT) {
 				_reg_read(si, SI24_REG_STATUS, &flags, 1);
 				timeout++;
 			}
@@ -198,24 +187,28 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 				ev.type = EV_ERR_MAX_RETRIES;
 				si->eh(si, &ev);
 				si24_reset(si);
-				return -1;
+				return bytes_sent;
 			}
 
 		} else {
 			_reg_write(si, SI24_W_TX_PAYLOAD_NO_ACK, buf + idx, sz);
 			si->ctl->chip_enable(1);
-			while (!(flags & (1 << TX_DS)) && timeout < 1000) {
+			while (!(flags & (1 << TX_DS)) && timeout < TIMEOUT) {
 				_reg_read(si, SI24_REG_STATUS, &flags, 1);
 				timeout++;
 			}
 		}
 
-		if (timeout >= 1000) {
+		if (timeout >= TIMEOUT) {
 			ev.type = EV_ERR_TIMEOUT;
 			si->eh(si, &ev);
 			si24_reset(si);
-			return -1;
+			return bytes_sent;
 		}
+
+		flags |= (1 << TX_DS);
+		_reg_write(si, SI24_REG_STATUS, &flags, 1);
+		_reg_read(si, SI24_REG_STATUS, &flags, 1);
 		bytes_sent += sz;
 		timeout = 0;
 	}

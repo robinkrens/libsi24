@@ -103,7 +103,7 @@ typedef struct {
     unsigned payload;
     unsigned timeout; /* 1: 250 us, 15: 4000 us */
     unsigned retries; /* 1 to 15 */
-    unsigned long mac_addr;
+    unsigned char mac_addr[5];
 } si24_opts_t;
 
 /* private data structure */
