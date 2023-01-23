@@ -6,7 +6,7 @@ original chip, but as far as I can tell this are pin and silicon compatible.
 ## How to use
 You will need to glue ``int (*write_and_read)(unsigned char *data, size_t sz)``
 and ``void (*chip_enable)(unsigned val)`` functions to your specific SPI 
-hardware
+hardware. See examples folders on how to initialze and configure structs.
 
 ## Currently supported functionality
 - Receiver mode 
