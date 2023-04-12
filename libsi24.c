@@ -87,10 +87,6 @@ static int _config(si24_t * si)
 	}
 
 	if (params->enable_ack) {
-		uint8_t dyn = (1 << DPL_P0);
-		ret += _reg_write(si, SI24_REG_DYNPD, &dyn, 1);
-		feature_reg |= (1 << EN_DPL);
-		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
 		if (params->mode == SEND_MODE) {
 			setup_retr_reg = ARD(params->timeout) | ARC(params->retries);
 			ret += _reg_write(si, SI24_REG_SETUP_RETR, &setup_retr_reg, 1);
@@ -99,6 +95,17 @@ static int _config(si24_t * si)
 		if (params->mode == SEND_MODE) {
 			feature_reg |= (1 << EN_DYN_ACK);
 			ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
+		}
+	}
+
+	if (params->enable_dynpd) {
+		uint8_t dyn = (1 << DPL_P0);
+		ret += _reg_write(si, SI24_REG_DYNPD, &dyn, 1);
+		feature_reg |= (1 << EN_DPL);
+		ret += _reg_write(si, SI24_REG_FEATURE, &feature_reg, 1);
+	} else { /* fixed payload size */
+		if (params->mode == RECV_MODE) {
+			ret += _reg_write(si, SI24_REG_RX_PW_P0, (uint8_t *) &params->payload, 1);
 		}
 	}
 
@@ -114,7 +121,6 @@ static int _config(si24_t * si)
 		uint8_t ch = 0x1;
 		ret += _reg_write(si, SI24_REG_EN_RXADDR, &ch, 1); 
 		ret += _reg_write(si, SI24_REG_RX_ADDR_P0, params->mac_addr, sizeof(params->mac_addr));
-		ret += _reg_write(si, SI24_REG_RX_PW_P0, (uint8_t *) &params->payload, 1);
 	} else {
 		ret += _reg_write(si, SI24_REG_TX_ADDR, params->mac_addr, sizeof(params->mac_addr));
 	}
@@ -174,8 +180,13 @@ size_t si24_send(si24_t* si, const unsigned char * buf, size_t size)
 		return -1;
 	}
 
-	for (size_t idx = 0; idx < size; idx += si->opts->payload) {
-		sz = (size - idx) < si->opts->payload ? (size - idx) : si->opts->payload;  
+	int payload = si->opts->payload;
+
+	if (si->opts->enable_dynpd)
+		payload = size > 32 ? 32 : size;
+
+	for (size_t idx = 0; idx < size; idx += payload) {
+		sz = (size - idx) < payload ? (size - idx) : payload;  
 		if (si->opts->enable_ack) {
 			_reg_write(si, SI24_W_TX_PAYLOAD, buf + idx, sz);
 			si->ctl->chip_enable(1);
@@ -247,6 +258,11 @@ size_t si24_recv(si24_t* si, unsigned char * buf, size_t size)
 	while(!(fifo_flags & (1 << RX_EMPTY)) &&
 			bytes_read < size) {
 		
+		if (si->opts->enable_dynpd) {
+			uint8_t d_sz = 0;
+			_reg_read(si, SI24_RX_PL_WID, &d_sz, 1);
+			p_size = d_sz;
+		}
 		int m_size = (size - bytes_read) > p_size ? p_size : (size - bytes_read);
 		_reg_read(si, SI24_R_RX_PAYLOAD, tmpbuf, m_size);
 
