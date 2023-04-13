@@ -11,10 +11,10 @@ hardware. See examples folders on how to initialze and configure structs.
 ## Currently supported functionality
 - Receiver mode 
 - Transfer mode
+- Dynamic payloads
 
 ## Not supported yet 
 - Multiple channels
-- Dynamic payload 
 
 ## References
 - https://datasheet.lcsc.com/szlcsc/1811142211_Nanjing-Zhongke-Microelectronics-Si24R1_C14436.pdf
