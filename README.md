@@ -12,7 +12,7 @@ HAL vendor calls.
 ## Example projects
 Here is a list of example projects that include this library:
 
-- ESP32: https://github.com/robinkrens/libsi24/raw/master/doc/si24r1-pinout.jpg
+- ESP32: https://github.com/robinkrens/esp32-si24r1-example
 
 ## Pinout picture
 My chip does not have a silk screen. Luckily it is compatible with 
