@@ -26,12 +26,18 @@
 
 #define DEBUG 0
 #define TIMEOUT 0xFFFF
+#define MAX_DEVICES 5
 
 struct si24_t {
+	unsigned int allocated;
 	const si24_opts_t *opts;
 	const si24_ioctl_t *ctl;
 	si24_event_handler_t eh;
 };
+
+/* use static allocation to lower memory footprint for small embedded
+ * devices */
+static struct si24_t SIDEVICE[5];
 
 static uint8_t _reg_read(si24_t *si, uint8_t reg,
 		uint8_t *data, int sz)
@@ -153,8 +159,17 @@ static int _config(si24_t * si)
 
 si24_t* si24_init(const si24_opts_t *opts, si24_event_handler_t eh)
 {
-	struct si24_t *si = (si24_t*) calloc(1, sizeof(si24_t));
-	if (si == 0)
+	int i;
+	struct si24_t *si;
+	/* look for empty spot */
+	for (i = 0; i < MAX_DEVICES; ++i) {
+		if (!SIDEVICE[i].allocated) {
+			si = &SIDEVICE[i];
+			SIDEVICE[i].allocated = 1;
+			break;
+		}
+	}
+	if (i >= 5)
 		return 0;
 
 	si->opts = opts;
@@ -163,7 +178,7 @@ si24_t* si24_init(const si24_opts_t *opts, si24_event_handler_t eh)
 
 	int ret = _config(si);
 	if (ret < 0) {
-		free(si);
+		si24_free(si);
 		return 0;
 	}
 
@@ -316,5 +331,5 @@ void si24_reset(si24_t* si)
 
 void si24_free(si24_t * si)
 {
-	free(si);
+	si->allocated = 0;
 }
