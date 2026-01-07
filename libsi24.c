@@ -140,7 +140,15 @@ static int _config(si24_t * si)
 		ret += _reg_write(si, SI24_REG_TX_ADDR, params->mac_addr, sizeof(params->mac_addr));
 	}
 
-	rf_setup_reg |= (params->speed << RF_DR_HIGH);
+	/* Clear existing data rate bits (bit 3 and bit 5) */
+	rf_setup_reg &= ~((1 << RF_DR_HIGH) | (1 << RF_DR_LOW));
+	if (params->speed == KBPS250) {
+		rf_setup_reg |= (1 << RF_DR_LOW);
+	} else if (params->speed == MBPS2) {
+		rf_setup_reg |= (1 << RF_DR_HIGH);
+	}
+	/* MBPS1 uses default: both bits remain 0 */
+
 	rf_setup_reg |= (params->txpwr << RF_PWR);
 	ret += _reg_write(si, SI24_REG_RF_SETUP, &rf_setup_reg, 1);
 
